@@ -209,12 +209,21 @@ func relativeRecordName(fqdn, zone string) string {
 	zone = strings.TrimSuffix(zone, ".")
 	fqdn = strings.TrimSuffix(fqdn, ".")
 
-	trimmed := strings.TrimSuffix(fqdn, "."+zone)
-	trimmed = strings.TrimSuffix(trimmed, ".")
-	if trimmed == "" {
+	if fqdn == zone {
 		return "@"
 	}
-	return trimmed
+
+	zoneSuffix := "." + zone
+	if strings.HasSuffix(fqdn, zoneSuffix) {
+		name := strings.TrimSuffix(fqdn, zoneSuffix)
+		name = strings.TrimSuffix(name, ".")
+		if name == "" {
+			return "@"
+		}
+		return name
+	}
+
+	return fqdn
 }
 
 func isACMERecord(record contabo.DNSRecord, name, value string) bool {
