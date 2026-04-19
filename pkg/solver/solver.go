@@ -3,6 +3,7 @@ package solver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -78,6 +79,17 @@ func (s *Solver) Present(ch *v1alpha1.ChallengeRequest) error {
 	zone := normalizeZone(ch.ResolvedZone)
 	recordName := relativeRecordName(ch.ResolvedFQDN, ch.ResolvedZone)
 
+	existing, err := client.ListRecords(ctx, zone, recordName)
+	if err != nil {
+		return err
+	}
+	for _, record := range existing {
+		if isACMERecord(record, recordName, ch.Key) {
+			klog.Infof("TXT record %s in zone %s already present, skipping create", recordName, zone)
+			return nil
+		}
+	}
+
 	req := contabo.CreateRecordRequest{
 		Name: recordName,
 		Type: "TXT",
@@ -117,17 +129,18 @@ func (s *Solver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 		return err
 	}
 
+	var delErrs []error
 	for _, record := range records {
 		if !isACMERecord(record, recordName, ch.Key) {
 			continue
 		}
 		klog.Infof("deleting TXT record %s (%d) in zone %s", record.Name, record.RecordID, zone)
 		if err := client.DeleteRecord(ctx, zone, fmt.Sprint(record.RecordID)); err != nil {
-			return err
+			delErrs = append(delErrs, fmt.Errorf("delete record %d: %w", record.RecordID, err))
 		}
 	}
 
-	return nil
+	return errors.Join(delErrs...)
 }
 
 func (s *Solver) newClient(cfg *Config, creds *credentials) (*contabo.Client, error) {

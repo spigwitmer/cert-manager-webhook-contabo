@@ -18,6 +18,7 @@ func TestSolverPresentAndCleanUp(t *testing.T) {
 	var (
 		createdRecordName string
 		createdRecordData string
+		createCalls       int
 		deletedRecordID   string
 	)
 
@@ -36,9 +37,15 @@ func TestSolverPresentAndCleanUp(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&payload)
 			createdRecordName = payload.Name
 			createdRecordData = payload.Data
+			createCalls++
 			w.WriteHeader(http.StatusCreated)
 		case http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
+			if createCalls == 0 {
+				// Pre-create listing (from Present) — no matching record yet.
+				_, _ = w.Write([]byte(`{"data":[{"recordId":100,"name":"_acme-challenge","type":"TXT","data":"other","ttl":120,"prio":0}]}`))
+				return
+			}
 			_, _ = w.Write([]byte(`{"data":[{"recordId":99,"name":"_acme-challenge","type":"TXT","data":"key","ttl":120,"prio":0},{"recordId":100,"name":"_acme-challenge","type":"TXT","data":"other","ttl":120,"prio":0}]}`))
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -96,6 +103,20 @@ func TestSolverPresentAndCleanUp(t *testing.T) {
 	}
 	if createdRecordName != "_acme-challenge" || createdRecordData != "key" {
 		t.Fatalf("unexpected create record: name=%s data=%s", createdRecordName, createdRecordData)
+	}
+
+	// Calling Present again should be a no-op: the record now exists with the same data.
+	createdRecordName = ""
+	createdRecordData = ""
+	priorCreateCalls := createCalls
+	if err := s.Present(challenge); err != nil {
+		t.Fatalf("present (idempotent): %v", err)
+	}
+	if createCalls != priorCreateCalls {
+		t.Fatalf("expected Present to be idempotent, but CreateRecord was called again")
+	}
+	if createdRecordName != "" || createdRecordData != "" {
+		t.Fatalf("unexpected create on idempotent Present: name=%s data=%s", createdRecordName, createdRecordData)
 	}
 
 	if err := s.CleanUp(challenge); err != nil {

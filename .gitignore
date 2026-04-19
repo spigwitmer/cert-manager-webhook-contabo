@@ -27,6 +27,12 @@ go.work.sum
 # env file
 .env
 
+# Local credentials and ad-hoc test artifacts
+creds.json
+contabo-test
+test_contabo.sh
+clankervision.sh
+
 # Editor/IDE
 # .idea/
 # .vscode/

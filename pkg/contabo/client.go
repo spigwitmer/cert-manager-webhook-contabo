@@ -83,12 +83,12 @@ func (c *Client) ListRecords(ctx context.Context, zone string, search string) ([
 	return resp.Data, nil
 }
 
-// DeleteRecord deletes a DNS record by ID.
+// DeleteRecord deletes a DNS record by ID. Returns nil if the record is already gone (404).
 func (c *Client) DeleteRecord(ctx context.Context, zone, recordID string) error {
-	return c.doJSON(ctx, http.MethodDelete, fmt.Sprintf("/v1/dns/zones/%s/records/%s", url.PathEscape(zone), url.PathEscape(recordID)), nil, nil)
+	return c.doJSON(ctx, http.MethodDelete, fmt.Sprintf("/v1/dns/zones/%s/records/%s", url.PathEscape(zone), url.PathEscape(recordID)), nil, nil, http.StatusNotFound)
 }
 
-func (c *Client) doJSON(ctx context.Context, method, path string, reqBody any, out any) error {
+func (c *Client) doJSON(ctx context.Context, method, path string, reqBody any, out any, acceptStatus ...int) error {
 	if err := c.ensureToken(ctx); err != nil {
 		return err
 	}
@@ -120,6 +120,11 @@ func (c *Client) doJSON(ctx context.Context, method, path string, reqBody any, o
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
+		for _, code := range acceptStatus {
+			if resp.StatusCode == code {
+				return nil
+			}
+		}
 		var apiErr apiErrorResponse
 		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
 		if apiErr.ErrorMessage != "" {
